@@ -1,12 +1,81 @@
-function shuffle(a){
-    // Fisher-Yates shuffle
-    var i,idx,x;
-    for(i=a.length-1;i>0;i--){
-        idx = Math.floor(Math.random() *(i+1));
-        x = a[idx];
-        a[idx] = a[i];
-        a[i] = x;
+function makeFalseMatrix(){
+    var mat = [];
+    for(var t=0; t<2; t++){
+        mat.push([]);
+        for(var i=0;i<3;i++){
+            mat[t].push([])
+            for(var j=0;j<2;j++){
+                mat[t][i].push(false);
+            }
+        }
     }
+    return mat;
+}
+
+function makeRangeType(idx, range){
+    // range \in \{ 'none','forward', 'line', 'shock', 'all' \}
+    var mat = makeFalseMatrix();
+    var setTrue = function(t,i,j){
+        if(dataMat[t][i][j] === undefined)
+            mat[t][i][j] = false;
+        mat[t][i][j] =  true;
+    }
+    switch(range){
+        case 'none':
+            break;
+        case 'forward':
+            if(idx[2] == 1){
+                //if(dataMat[1-idx[0]][idx[1]][1])
+                //mat[1-idx[0]][idx[1]][1] = true;
+                setTrue(1-idx[0], idx[1], 1);
+            }
+            break;
+        case 'line':
+            if(idx[2] == 1){
+                //mat[1-idx[0]][0][1] = true;
+                //mat[1-idx[0]][1][1] = true;
+                //mat[1-idx[0]][2][1] = true;
+                for(var i=0; i<3; i++)
+                    setTrue(1-idx[0], i, 1);
+            }
+            break;
+        case 'shock':
+            if(idx[0] === 0){
+                for(var i=0; i<3; i++)
+                    setTrue(1-idx[0], i, 1);
+            }
+            else{
+                for(var i=0; i<3; i++)
+                    for(var j=0; j<2; j++)
+                        setTrue(1-idx[0],i,j);
+            }
+            break;
+        case 'all':
+            for(var i=0; i<3; i++)
+                for(var j=0; j<2; j++)
+                    setTrue(1-idx[0],i,j);
+            break;
+        default:
+            console.log('unknown range type');
+            break;
+    }
+    return mat;
+}
+
+function makeRange(idx, type){
+    // melee','range','move','wait' -> 2*3*2 mask bool matrix
+    var meleeMat = makeRangeType(idx, type2range[type].melee);
+    var rangeMat = makeRangeType(idx, type2range[type].range);
+    var moveMat = makeFalseMatrix();
+    moveMat[idx[0]][idx[1]][1-idx[2]] = idx[2] === 1 && dataMat[idx[0]][idx[1]][1-idx[2]] !== undefined;
+    var waitMat = makeFalseMatrix();
+    waitMat[idx[0]][idx[1]][idx[2]] = true;
+    return {
+        melee: meleeMat,
+        range: rangeMat,
+        move: moveMat,
+        wait: waitMat
+    };
 }
 
 function graphics2texture(graphics, config){
@@ -24,7 +93,7 @@ function graphics2texture(graphics, config){
     return texture;
 }
 
-function drawUnitBox(x,y,unitData,isAttacker){
+function drawUnitBox(x,y,isAttacker){
     /*
       unitData example:
       {
@@ -51,7 +120,7 @@ function drawUnitBox(x,y,unitData,isAttacker){
     
     //app.stage.addChild(battleSideBox);
     
-    var unitIcon = new PIXI.Sprite(PIXI.loader.resources[type2img[unitData.type]].texture);
+    var unitIcon = new PIXI.Sprite(PIXI.loader.resources[type2img['民兵']].texture);
     //unitIcon.anchor.set(0.5);
     if(!isAttacker)
         unitIcon.scale.x = -1;
@@ -60,26 +129,43 @@ function drawUnitBox(x,y,unitData,isAttacker){
         var nameColor = '#0000ee';
     else
         var nameColor = '#ee0000';
-    var nameText = new PIXI.Text(unitData.name, {fontSize:10, fill:[nameColor]});
-    var typeText = new PIXI.Text(unitData.type, {fontSize:10});
-    var moraleText = new PIXI.Text(unitData.morale+'/'+unitData.maxMorale, {fontSize:10});
+    var nameText = new PIXI.Text('nameText', {fontSize:10, fill:[nameColor]});
+    var typeText = new PIXI.Text('typeText', {fontSize:10});
+    var moraleText = new PIXI.Text('moraleText', {fontSize:10});
     //var strengthText = new PIXI.Text(unitData.strength + '/'+ unitData.maxStrength, {fontSize:12});
-    var strengthText = new PIXI.Text(unitData.strength, {
+    var strengthText = new PIXI.Text('strengthText', {
         fontSize:15,
         fontWeight: 'bold',
         fill: ['#eeeeee'],
         stroke: '#222222',
         strokeThickness: 2});
     
-    var descText = new PIXI.Text('I:' + unitData.I+" W:"+unitData.W+" B:" +unitData.B +" exp:"+unitData.exp+" (Lv"+unitData.lv+')', {fontSize:8});
-    
+    var descText = new PIXI.Text('descText', {fontSize:8});
+    /*
     if(unitData.buff<0)
         var buffColor = '#ee0000'
     else if(unitData.buff == 0)
         var buffColor = '#000000'
     else
         var buffColor = '#00bb00'
-    var buffText = new PIXI.Text(unitData.buff*100+'%', {fontSize:10, fill:[buffColor]});
+    */
+    var buffColor = '#ee0000'
+    var buffText = new PIXI.Text('buffText', {fontSize:10, fill:[buffColor]});
+
+    var meleeButton = new PIXI.Sprite(PIXI.loader.resources['command-0-0.png'].texture);
+    var rangeButton = new PIXI.Sprite(PIXI.loader.resources['command-0-1.png'].texture);
+    var waitButton = new PIXI.Sprite(PIXI.loader.resources['command-0-2.png'].texture);
+    var moveButton = new PIXI.Sprite(PIXI.loader.resources['command-0-3.png'].texture);
+    var buttonList = [meleeButton,rangeButton,waitButton,moveButton];
+    for(var i=0;i<buttonList.length;i++){
+        var button = buttonList[i];
+        button.anchor.set(0.5);
+
+    }
+
+
+    var buttonContainer = new PIXI.Container();
+    buttonContainer.addChild(meleeButton, rangeButton, waitButton, moveButton);
     
     //unitIcon.anchor.set(0.5);
     unitIcon.x = x -80;
@@ -104,6 +190,26 @@ function drawUnitBox(x,y,unitData,isAttacker){
     
     buffText.x = x+35;
     buffText.y = y-15;
+
+    meleeButton.x = x
+    //meleeButton.y = y-10;
+    meleeButton.y = y;
+
+    rangeButton.x = x;
+    rangeButton.y = y;
+
+    waitButton.x = x;
+    waitButton.y = y;
+
+    moveButton.x = x;
+    moveButton.y = y;
+
+
+    var topContainer = new PIXI.Container();
+
+    topContainer.addChild(unitIcon, nameText, typeText, moraleText, strengthText, descText, buffText, buttonContainer);
+    //console.log(topContainer.children);
+    
     
     var spriteMap = {
         battleSideBox: battleSideBox,
@@ -113,24 +219,189 @@ function drawUnitBox(x,y,unitData,isAttacker){
         moraleText: moraleText,
         strengthText: strengthText,
         descText: descText,
-        buffText: buffText
+        buffText: buffText,
+        topContainer: topContainer,
+        meleeButton: meleeButton,
+        rangeButton: rangeButton,
+        waitButton: waitButton,
+        moveButton: moveButton,
+        buttonContainer: buttonContainer
     }
+    /* 
     Object.keys(spriteMap).forEach(function(key){
         app.stage.addChild(spriteMap[key]);
     });
+    */
+    
+    app.stage.addChild(spriteMap.battleSideBox);
+    app.stage.addChild(topContainer);
     
     return spriteMap;
     
 }
 
-function drawSideBar(x,y,text1,text2){
+function updateUnitBox(unitIdx){
+    var spriteMap = spriteManager.spriteMat[unitIdx[0]][unitIdx[1]][unitIdx[2]];
+    var unitData = dataMat[unitIdx[0]][unitIdx[1]][unitIdx[2]];
+    var isAttacker = unitIdx[0] === 0;
+
+    if(!unitData){
+        spriteMap.battleSideBox.texture = graphicsTexture.battleSideBoxNull;
+        spriteMap.topContainer.visible = false;
+        return;
+    }
+
+    spriteMap.topContainer.visible = true;
+
+    if(arrayEqual(unitIdx,battleManager.unitSelected)){
+        spriteMap.battleSideBox.texture = graphicsTexture.battleSideBoxSelected;
+    }
+    else{
+        spriteMap.battleSideBox.texture = graphicsTexture.battleSideBox;
+    }
+
+    spriteMap.unitIcon.texture = PIXI.loader.resources[type2img[unitData.type]].texture;
+
+    if(isAttacker)
+        var nameColor = '#0000ee';
+    else
+        var nameColor = '#ee0000';
+    spriteMap.nameText.text = unitData.name;
+    spriteMap.nameText.style.fill = [nameColor];
+
+    spriteMap.typeText.text = unitData.type;
+
+    spriteMap.moraleText.text = unitData.morale+'/'+unitData.maxMorale;
+
+    spriteMap.strengthText.text = unitData.strength;
+
+    spriteMap.descText.text = 'I:' + unitData.I+" W:"+unitData.W+" B:" +unitData.B +" exp:"+unitData.exp+" (Lv"+unitData.lv+')';
+
+    if(unitData.buff<0)
+        var buffColor = '#ee0000'
+    else if(unitData.buff == 0)
+        var buffColor = '#000000'
+    else
+        var buffColor = '#00bb00'
+
+    spriteMap.buffText.text = unitData.buff*100+'%';
+    spriteMap.buffText.style.fill = [buffColor];
+
+    var idx = unitIdx;
+    spriteMap.meleeButton.visible = battleManager.rangeMap.melee[idx[0]][idx[1]][idx[2]];
+    spriteMap.rangeButton.visible = battleManager.rangeMap.range[idx[0]][idx[1]][idx[2]];
+    spriteMap.waitButton.visible = battleManager.rangeMap.wait[idx[0]][idx[1]][idx[2]];
+    spriteMap.moveButton.visible = battleManager.rangeMap.move[idx[0]][idx[1]][idx[2]];
+
+    //console.log(spriteMap.meleeButton.visible, spriteMap.rangeButton.visible);
+    if(spriteMap.meleeButton.visible && spriteMap.rangeButton.visible){
+        //console.log('detect conflict')
+        spriteMap.meleeButton.y = spriteMap.battleSideBox.y - 17;
+        spriteMap.rangeButton.y = spriteMap.battleSideBox.y + 17;
+    }
+    else{
+        spriteMap.meleeButton.y = spriteMap.battleSideBox.y;
+        spriteMap.rangeButton.y = spriteMap.battleSideBox.y;
+    }
+
+    //console.log(battleManager.buttonIdxSelected,idx,battleManager.buttonIdxSelected !== undefined && (arrayEqual(battleManager.buttonIdxSelected,idx)))
+    if(battleManager.buttonIdxSelected !== undefined && (arrayEqual(battleManager.buttonIdxSelected,idx))){
+        //spriteMap.buttonContainer.alpha = 1.0
+        spriteMap[battleManager.buttonKeySelected].alpha = 1.0;
+    }
+    else{
+        ['meleeButton','rangeButton','waitButton','moveButton'].forEach(function(key){
+            spriteMap[key].alpha = 0.5;
+        })
+    }
+
+
+}
+
+function drawBattleCenterVector(){
+    var battleCenterBoxVector = [];
+    var battleCenterTextVector = [];
+
+    var sm_x = 400;
+    var sm_y = 320;
+    for(var i=0;i<12;i++){
+        var battleCenterBox = new PIXI.Sprite(graphicsTexture['battleCenterBox']);
+        battleCenterBox.anchor.set(0.5);
+        battleCenterBox.x = sm_x;
+        battleCenterBox.y = sm_y + i*20;      
+        app.stage.addChild(battleCenterBox);
+        battleCenterBoxVector.push(battleCenterBox);
+    }
+
+    for(var i=0; i<12; i++){
+        var name = 'name';
+
+        var color = '#0000ee';
+        var text = new PIXI.Text(name, {
+            'fill':[color],
+            fontSize:10
+        });
+        text.anchor.set(0.5);
+        text.x = 400;
+        text.y = 320 + i*20;
+        app.stage.addChild(text);
+        battleCenterTextVector.push(text);
+    }
+    
+    
+    //spriteManager.battleCenterBoxVector = battleCenterBoxVector;
+    //spriteManager.battleCenterTextVector = battleCenterTextVector;
+    var battleCenterVector = [];
+    for(var i=0;i<12;i++){
+        battleCenterVector.push({box: battleCenterBoxVector[i], text: battleCenterTextVector[i]});
+    }
+
+    var border = new PIXI.Sprite(graphicsTexture.battleCenterBoxSelectedBorder);
+    border.anchor.set(0.5);
+    border.x = 400;
+    border.y = 320 + 0*20;
+    app.stage.addChild(border);
+
+    battleCenterVector.border = border; // well, append a attribution into a array may be a wrong idea.
+
+    return battleCenterVector;
+}
+
+function updateBattleCenterVector(vectorIdx){
+    var cell = spriteManager.battleCenterVector[vectorIdx];
+    var idx = battleManager.unitOrder[vectorIdx];
+
+    if(dataMat[idx[0]][idx[1]][idx[2]] === undefined){
+        cell.text.text = '';
+        cell.box.texture = graphicsTexture.battleCenterBoxNull;
+    }
+    else{
+        cell.text.text = dataMat[idx[0]][idx[1]][idx[2]].name;
+        var color = idx[0] === 0 ? '#0000ee' : '#ee0000';
+        cell.text.style.fill = [color];
+        if(vectorIdx <= battleManager.orderSelected){
+            cell.box.texture = graphicsTexture.battleCenterBoxLapsed;
+        }
+        else{
+            cell.box.texture = graphicsTexture.battleCenterBox;
+        }
+    }
+
+    
+}
+
+function drawSideBar(x,y){
     
     //var spriteMap = {}
     
     var sideBarBox = new PIXI.Sprite(graphicsDynamicTexture['sideBarBox'].texture);
     //graphicsDynamicTexture['sideBarBox'].update(p);
+    /*
     var spriteText1 = new PIXI.Text(text1, {fontSize:10, fill:['#eeeeee']});
     var spriteText2 = new PIXI.Text(text2, {fontSize:10, fill:['#eeeeee']});
+    */
+   var spriteText1 = new PIXI.Text('spriteText1', {fontSize:10, fill:['#eeeeee']});
+   var spriteText2 = new PIXI.Text('spriteText2', {fontSize:10, fill:['#eeeeee']});
     
     sideBarBox.x = x + 200;
     sideBarBox.y = y + 10;
@@ -144,20 +415,29 @@ function drawSideBar(x,y,text1,text2){
     app.stage.addChild(spriteText2);
     
     return {sideBarBox: sideBarBox,
-            sideBarBoxUpdate: graphicsDynamicTexture['sideBarBox'].update,
+            //sideBarBoxUpdate: graphicsDynamicTexture['sideBarBox'].update,
             spriteText1: spriteText1,
             spriteText2: spriteText2};
     
 }
 
-function drawFactionGraph(x,y, atkInfo,defInfo, battleInfo){
+function updateSideBar(p,text1,text2){
+    var spriteMap = spriteManager.factionSpriteMap.sideBar;
+    spriteMap.spriteText1.text = text1;
+    spriteMap.spriteText2.text = text2;
+    graphicsDynamicTexture['sideBarBox'].update(p);
+}
+
+function drawFactionGraph(x,y){
     var battleUpperBox = new PIXI.Sprite(graphicsTexture['battleUpperBox']);
     battleUpperBox.x = x;
     battleUpperBox.y = y;
     app.stage.addChild(battleUpperBox);
     
-    var flagAtk = new PIXI.Sprite(PIXI.loader.resources[faction2img[atkInfo['faction']]].texture)
-    var flagDef = new PIXI.Sprite(PIXI.loader.resources[faction2img[defInfo['faction']]].texture)
+    //var flagAtk = new PIXI.Sprite(PIXI.loader.resources[faction2img[atkInfo['faction']]].texture)
+    //var flagDef = new PIXI.Sprite(PIXI.loader.resources[faction2img[defInfo['faction']]].texture)
+    var flagAtk = new PIXI.Sprite(PIXI.loader.resources[faction2img['国民政府']].texture)
+    var flagDef = new PIXI.Sprite(PIXI.loader.resources[faction2img['国民政府']].texture)
     
     flagAtk.x = 10;
     flagAtk.y = 5;
@@ -168,11 +448,9 @@ function drawFactionGraph(x,y, atkInfo,defInfo, battleInfo){
     app.stage.addChild(flagAtk);
     app.stage.addChild(flagDef);
     
-    var textFactionAtk = new PIXI.Text('攻方:'+atkInfo['faction'] + '\n补给:'+atkInfo['supply']+'/资金:'+atkInfo['money'], 
-        {fontSize:11});
+    var textFactionAtk = new PIXI.Text('textFactionAtk', {fontSize:11});
     
-    var textFactionDef = new PIXI.Text('守方:'+defInfo['faction'] + '\n补给:'+defInfo['supply']+'/资金:'+defInfo['money'], 
-        {fontSize:11});
+    var textFactionDef = new PIXI.Text('textFactionDef', {fontSize:11});
     
     textFactionAtk.x = 50;
     textFactionAtk.y = 5;
@@ -185,11 +463,11 @@ function drawFactionGraph(x,y, atkInfo,defInfo, battleInfo){
     app.stage.addChild(textFactionAtk);
     app.stage.addChild(textFactionDef);
     
-    var sideBar = drawSideBar(x,y,
-        battleInfo['location']+'之战 ['+battleInfo['terrain']+']',
-        battleInfo['turn']+'/'+battleInfo['maxTurn']+'回合');
-    sideBar['sideBarBoxUpdate'](atkInfo['strength'] / (atkInfo['strength'] + defInfo['strength'] + 1.0));
-    
+    var sideBar = drawSideBar(x,y);
+    //sideBar['sideBarBoxUpdate'](atkInfo['strength'] / (atkInfo['strength'] + defInfo['strength'] + 1.0));
+    //var p =0.5
+    //updateSideBar(0.5, 'sideBarText1', 'sideBarText2');
+
     return {
         battleUpperBox: battleUpperBox,
         flagAtk: flagAtk,
@@ -199,6 +477,19 @@ function drawFactionGraph(x,y, atkInfo,defInfo, battleInfo){
         sideBar: sideBar
     }
     
+}
+
+function updateFactionGraph(atkInfo,defInfo, battleInfo){
+    var spriteMap = spriteManager.factionSpriteMap;
+    spriteMap.flagAtk.texture = PIXI.loader.resources[faction2img[atkInfo['faction']]].texture;
+    spriteMap.flagDef.texture = PIXI.loader.resources[faction2img[defInfo['faction']]].texture;
+    spriteMap.textFactionAtk.text = '攻方:'+atkInfo['faction'] + '\n补给:'+atkInfo['supply']+'/资金:'+atkInfo['money'];
+    spriteMap.textFactionDef.text = '守方:'+defInfo['faction'] + '\n补给:'+defInfo['supply']+'/资金:'+defInfo['money'];
+    //spriteMap.sideBar.sideBarBoxUpdate(atkInfo['strength'] / (atkInfo['strength'] + defInfo['strength'] + 1.0));
+    var p = atkInfo['strength'] / (atkInfo['strength'] + defInfo['strength'] + 1.0);
+    var sideBarText1 = battleInfo['location']+'之战 ['+battleInfo['terrain']+']';
+    var sideBarText2 = battleInfo['turn']+'/'+battleInfo['maxTurn']+'回合';
+    updateSideBar(p, sideBarText1, sideBarText2);
 }
 
 function drawFormationMat(){
@@ -228,6 +519,37 @@ function drawFormationMat(){
     return formationMat
 }
 
+function updateFormatMat(){
+    // static layout enemy is hidden and ally is displayed in fraction
+    var idx = battleManager.unitSelected;
+    if(dataMat[idx[0]][idx[1]][idx[2]] === undefined)
+        console.log("invalid select")
+    var texture = PIXI.loader.resources[type2img[dataMat[idx[0]][idx[1]][idx[2]]['type']]].texture;
+    var lossCount = Math.floor((1-dataMat[idx[0]][idx[1]][idx[2]]['strength'] / dataMat[idx[0]][idx[1]][idx[2]]['maxStrength'])*20);
+    
+    for(var t=0; t<2; t++){
+        for(var i=0; i<4; i++){
+            for(var j=0; j<5; j++){
+                if(t !== idx[0]){
+                    spriteManager.formationMat[t][i][j].visible = false; // hide another side
+                }
+                else{
+                    spriteManager.formationMat[t][i][j].texture = texture;
+                    spriteManager.formationMat[t][i][j].visible = true;
+                }
+            }
+        }
+    }
+    
+    for(var j=0; j<5; j++){
+        for(var i=3; i>=0; i--){
+            if(lossCount<=0)
+                break;
+            spriteManager.formationMat[idx[0]][i][j].visible = false;
+            lossCount--;
+        }
+    }
+}
 
 
 
@@ -264,6 +586,13 @@ var graphicsTexture = (function(){
     graphics.drawRect(1, 1, 160, 70);
 
     exports['battleSideBoxSelected'] = graphics2texture(graphics);
+
+    graphics = new PIXI.Graphics();
+    graphics.lineStyle(2, 0x000000, 1);
+    graphics.beginFill(0x555555, 1);
+    graphics.drawRect(1, 1, 160, 70);
+
+    exports['battleSideBoxNull'] = graphics2texture(graphics);
     
     // draw centering name box
     
@@ -282,8 +611,17 @@ var graphicsTexture = (function(){
     graphics.drawRect(1, 1, 80, 20);
     
     exports['battleCenterBoxLapsed'] = graphics2texture(graphics);
+
+    // draw centering name box(null)
     
-    // draw centering name box(grey)
+    graphics = new PIXI.Graphics();
+    graphics.lineStyle(2, 0x000000, 1);
+    graphics.beginFill(0x888888, 1);
+    graphics.drawRect(1, 1, 80, 20);
+    
+    exports['battleCenterBoxNull'] = graphics2texture(graphics);
+    
+    // draw centering box focus border
     
     graphics = new PIXI.Graphics();
     graphics.lineStyle(2, 0xee0000, 1);
@@ -352,49 +690,118 @@ var graphicsDynamicTexture = (function(){
 var spriteManager = {}; // this manager will be imported into all sprites
 
 
-var formationManager = {
-    reset: function(){
-        // static layout enemy is hidden and ally is displayed in fraction
-        var idx = battleManager.unitSelected;
-        var texture = PIXI.loader.resources[type2img[dataMat[idx[0]][idx[1]][idx[2]]['type']]].texture;
-        var lossCount = Math.floor((1-dataMat[idx[0]][idx[1]][idx[2]]['strength'] / dataMat[idx[0]][idx[1]][idx[2]]['maxStrength'])*20);
-        
-        for(var t=0; t<2; t++){
-            for(var i=0; i<4; i++){
-                for(var j=0; j<5; j++){
-                    if(t !== idx[0]){
-                        spriteManager.formationMat[t][i][j].visible = false; // hide another side
-                    }
-                    else{
-                        spriteManager.formationMat[t][i][j].texture = texture;
-                        spriteManager.formationMat[t][i][j].visible = true;
-                    }
-                }
-            }
-        }
-        
-        for(var j=0; j<5; j++){
-            for(var i=3; i>=0; i--){
-                if(lossCount<=0)
-                    break;
-                spriteManager.formationMat[idx[0]][i][j].visible = false;
-                lossCount--;
-            }
-        }
-    }
-}
+
 
 var battleManager = {
     unitSelected: [0,1,1], // seleced idx i.e. [0,0,0]
     unitPrevSelected:[0,1,1],
+    orderSelected:0,
+    buttonKeySelected:undefined,
+    buttonIdxSeleted:undefined,
+    unitOrder:undefined,
+    rangeMap:undefined,
+    atkInfo:{faction:"国民政府", supply:0, money:0, strength:100},
+    defInfo:{faction:"国民政府", supplu:0, money:0, strength:100}, 
+    battleInfo:{location: '南京', terrain:'城市', turn:1, maxTurn:45},
+
     select:function(idx){
         var pidx = this.unitSelected;
         this.unitPrevSelected = pidx;
         this.unitSelected = idx;
         
-        // reset focus, more better if move those logic into a independent location.
-        spriteManager.spriteMat[pidx[0]][pidx[1]][pidx[2]]['battleSideBox'].texture = graphicsTexture['battleSideBox'];
-        spriteManager.spriteMat[idx[0]][idx[1]][idx[2]]['battleSideBox'].texture = graphicsTexture['battleSideBoxSelected'];
+    },
+    updateAllUnitBox:function(){
+        var idx = this.unitSelected;
+        var unitData = dataMat[idx[0]][idx[1]][idx[2]];
+        this.rangeMap = makeRange(idx, unitData.type);
+
+        for(var t=0;t<2;t++){
+            for(var i=0;i<3;i++){
+                for(var j=0;j<2;j++){
+                    updateUnitBox([t,i,j]);
+                }
+            }
+        }
+    },
+    updateAllBattleCenterVector:function(){
+        for(var i=0; i<12; i++){
+            updateBattleCenterVector(i);
+        }
+        spriteManager.battleCenterVector.border.y = 320 + this.orderSelected * 20;
+    },
+    updateAll:function(){
+        updateFormatMat();
+        this.updateAllBattleCenterVector();
+        this.updateAllUnitBox();
+        updateFactionGraph(this.atkInfo, this.defInfo, this.battleInfo);
+    },
+    battleInit:function(){
+        //
+    },
+    newRound:function(){
+        this.orderSelected = 0;
+        this.select(this.unitOrder[0]);
+        this.battleInfo.turn+=1;
+
+        this.updateAll();
+    },
+    nextUnit:function(){
+        //this.battleInfo.turn += 1;
+        if(this.battleInfo.turn > this.battleInfo.maxTurn){
+            console.log("battle end TODO...");
+            // TODO
+        }
+        var idx = this.unitOrder[this.orderSelected+1]
+        if(dataMat[idx[0]][idx[1]][idx[2]] === undefined){
+            this.newRound();
+            return;
+        }
+        this.orderSelected += 1;
+        this.select(idx);
+        this.battleInfo.turn += 1;
+        
+        this.updateAll();
+    },
+    onButtonDown: function(key, idx){
+        console.log('onButtonDown',key,idx);
+        this[key](idx); // dispatch to other handlers with key name
+    },
+    onButtonUp:function(key, idx){
+        console.log('onButtonUp',key,idx);
+    },
+    onButtonOver:function(key, idx){
+        console.log('onButtonOver',key,idx);
+        if(['meleeButton','rangeButton','waitButton','moveButton'].indexOf(key) !== -1){
+            this.buttonKeySelected = key;
+            this.buttonIdxSelected = idx;
+        }
+        else{
+            console.log("unknown",key,idx);
+        }
+        this.updateAllUnitBox();
+    },
+    onButtonOut:function(key, idx){
+        console.log('onButtonOut',key,idx);
+        this.buttonKeySelected = undefined;
+        this.buttonIdxSelected = undefined;
+        this.updateAllUnitBox();
+    },
+    meleeButton:function(idx){
+        console.log(this.unitSelected+'will attack(melee) '+idx);
+    },
+    rangeButton:function(idx){
+        console.log(this.unitSelected+'will attack(range) '+idx);
+    },
+    moveButton:function(idx){
+        console.log(this.unitSelected+'will replace its position with'+idx);
+    },
+    waitButton:function(idx){
+        console.log(this.unitSelected+'will zzz');
+        var unitData = dataMat[idx[0]][idx[1]][idx[2]];
+        if(unitData.morale < unitData.maxMorale){
+            unitData.morale += 1;
+        }
+        this.nextUnit();
     }
 }
 
@@ -410,12 +817,13 @@ PIXI.loader
     .add('unit-003-0.png','images/anime/unit-003-0.png')
     .add('flag-3-0.png','images/flags/flag-3-0.png')
     .add('flag-78-0.png','images/flags/flag-78-0.png')
+    .add('command-0-0.png','images/buttons/command-0-0.png')
+    .add('command-0-1.png','images/buttons/command-0-1.png')
+    .add('command-0-2.png','images/buttons/command-0-2.png')
+    .add('command-0-3.png','images/buttons/command-0-3.png')
 	.load(setup);
     
-var faction2img = {
-    '国民政府':'flag-3-0.png',
-    '川康军':'flag-78-0.png'
-}
+
 
 function gameloop(delta){
     //console.log(delta);
@@ -443,7 +851,7 @@ function setup(loader, resources){
     // draw gray box layout
     var spriteMat = []; // 2 * 3 * 2 sprite matrix, spriteMat[0,:,:] means attacker, spriteMat[:,0,0] means left-upper unit for attacker side. right-upper unit in defender side.
     
-    for(var t=0;t<2;t++){
+    for(let t=0;t<2;t++){
         spriteMat.push([])
         var sm_x,sm_y,step_x,step_y;
         if(t === 0){
@@ -458,11 +866,32 @@ function setup(loader, resources){
             step_x = -170;
             step_y = 80;
         }
-        for(var i=0; i<3; i++){
+        for(let i=0; i<3; i++){
             spriteMat[t].push([]);
-            for(var j=0; j<2; j++){
-
-                spriteMat[t][i][j] = drawUnitBox(sm_x + step_x*j, sm_y + step_y*i, dataMat[t][i][j], t === 0)
+            for(let j=0; j<2; j++){
+                spriteMat[t][i][j] = drawUnitBox(sm_x + step_x*j, sm_y + step_y*i, t === 0);
+                // binding button related event
+                ['meleeButton','rangeButton','waitButton','moveButton'].forEach(function(key){
+                    var button = spriteMat[t][i][j][key];
+                    button.interactive = true;
+                    //button.buttonMode = true; // turn off hand icon
+                    button
+                        .on('pointerdown', function(){
+                            battleManager.onButtonDown(key,[t,i,j])
+                        }) // button will be denoted as `this` in callback function onButtonDown etc.
+                        .on('pointerup', function(){
+                            battleManager.onButtonUp(key,[t,i,j]);
+                        })
+                        .on('pointerupoutside', function(){
+                            battleManager.onButtonUp(key,[t,i,j]);
+                        })
+                        .on('pointerover', function(){
+                            battleManager.onButtonOver(key,[t,i,j]);
+                        })
+                        .on('pointerout', function(){
+                            battleManager.onButtonOut(key,[t,i,j]);
+                        });
+                })
             }
         }
     }
@@ -471,26 +900,19 @@ function setup(loader, resources){
     
     
     // draw centering labels
-    
-    var battleCenterBoxVector = [];
+    spriteManager.battleCenterVector = drawBattleCenterVector();
 
-    var sm_x = 400;
-    var sm_y = 320;
-    for(var i=0;i<12;i++){
-        var battleCenterBox = new PIXI.Sprite(graphicsTexture['battleCenterBox']);
-        battleCenterBox.anchor.set(0.5);
-        battleCenterBox.x = sm_x;
-        battleCenterBox.y = sm_y + i*20;      
-        app.stage.addChild(battleCenterBox);
-        battleCenterBoxVector.push(battleCenterBox);
-    }
-    
     var pots = {};
     var I;
     for(var t=0;t<2;t++){
         for(var i=0;i<3;i++){
             for(var j=0;j<2;j++){
-                I = dataMat[t][i][j]['I'];
+                if(dataMat[t][i][j] === undefined){
+                    I = undefined;
+                }
+                else{
+                    I = dataMat[t][i][j]['I'];
+                }
                 if(pots[I]){
                     pots[I].push([t,i,j]);
                 }
@@ -500,7 +922,11 @@ function setup(loader, resources){
             }
         }
     }
-    var idxs = Object.keys(pots).map(function(sn){return Number(sn)});
+    var idxs = Object.keys(pots).map(function(sn){
+        if(sn === "undefined")
+            return undefined;
+        return Number(sn)
+    });
     idxs.sort(function(x,y){return x<y});
     var unitOrder = [];
     idxs.forEach(function(idx){
@@ -508,45 +934,35 @@ function setup(loader, resources){
         shuffle(arr);
         unitOrder = unitOrder.concat(arr);
     });
-    for(var i=0; i<12; i++){
-        var idx = unitOrder[i];
-        var name = dataMat[idx[0]][idx[1]][idx[2]]['name'];
 
-        var color = idx[0] === 0 ? '#0000ee' : '#ee0000';
-        var text = new PIXI.Text(name, {
-            'fill':[color],
-            fontSize:10
-        });
-        text.anchor.set(0.5);
-        text.x = 400;
-        text.y = 320 + i*20;
-        app.stage.addChild(text);
-    }
+    battleManager.unitOrder = unitOrder;
     
-    spriteManager.battleCenterBoxVector = battleCenterBoxVector;
-    
+    // draw formation UI
     spriteManager.formationMat = drawFormationMat();
     
     
     // draw up bar
-    var factionSpriteMap = drawFactionGraph(0,0,{
-        faction:'国民政府',
-        supply:13,
-        money:75,
-        strength:700
-    },{
-        faction:'川康军',
-        supply:1,
-        money:4,
-        strength:800
-    },{
-        location: '自贡',
-        terrain: '山丘',
-        turn:3,
-        maxTurn:45
-    });
+    var factionSpriteMap = drawFactionGraph(0,0);
     
     spriteManager.factionSpriteMap = factionSpriteMap;
+
+    battleManager.atkInfo.faction = '国民政府';
+    battleManager.atkInfo.supply = 13;
+    battleManager.atkInfo.money = 75;
+    battleManager.atkInfo.strength = 700;
+
+    battleManager.defInfo.faction = '川康军';
+    battleManager.defInfo.supply = 1;
+    battleManager.defInfo.money = 4;
+    battleManager.defInfo.strength = 800;
+
+    battleManager.battleInfo.location = '自贡';
+    battleManager.battleInfo.terrain = '山丘';
+    battleManager.battleInfo.turn = 1;
+    battleManager.battleInfo.maxTurn = 45;
+
+
+    //updateFactionGraph(battleManager.atkInfo, battleManager.defInfo, battleManager.battleInfo);
     
     // draw withdraw layout
     
@@ -566,22 +982,11 @@ function setup(loader, resources){
         withdrawText: withdrawText
     }
     
-    // select Peide Zhu
-    //spriteMat[0][0][1]['battleSideBox'].texture = graphicsTexture["battleSideBoxSelected"];
-    battleManager.select([0,0,1]);
     
-    spriteManager.battleCenterBoxVector[0].texture = graphicsTexture.battleCenterBoxLapsed;
-    spriteManager.battleCenterBoxVector[1].texture = graphicsTexture.battleCenterBoxLapsed;
-    spriteManager.battleCenterBoxVector[2].texture = graphicsTexture.battleCenterBoxLapsed;
+    battleManager.newRound();
     
     
-    var border = new PIXI.Sprite(graphicsTexture.battleCenterBoxSelectedBorder);
-    border.anchor.set(0.5);
-    border.x = 400;
-    border.y = 320 + 2*20;
-    app.stage.addChild(border);
-    
-    formationManager.reset();
+    //formationManager.reset();
     
     app.ticker.add(gameloop);
 }
