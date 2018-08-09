@@ -1,5 +1,11 @@
-
-
+var _type2img = {
+    '骑兵':'002',
+    '新军步兵':'131',
+    '民兵':'000',
+    '黄埔步兵':'001',
+    '炮兵':'003'
+}
+/*
 var type2img = {
     '骑兵':'unit-002-0.png',
     '新军步兵':'unit-131-0.png',
@@ -7,6 +13,17 @@ var type2img = {
     '黄埔步兵':'unit-001-0.png',
     '炮兵':'unit-003-0.png'
 }
+*/
+type2img = {};
+type2frame = {};
+for(let type in _type2img){
+    type2img[type] = 'unit-'+_type2img[type]+'-0.png'; 
+    type2frame[type] = [];
+    for(let i=0;i<4;i++){
+        type2frame[type].push('unit-'+_type2img[type]+'-'+i+'.png'); 
+    }
+}
+
 
 /*
 none:无攻击

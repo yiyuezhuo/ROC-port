@@ -1,3 +1,8 @@
+function getLossCount(strength, maxStrength){
+
+    return Math.floor((1-strength / maxStrength)*20);
+}
+
 function makeFalseMatrix(){
     var mat = [];
     for(var t=0; t<2; t++){
@@ -76,6 +81,39 @@ function makeRange(idx, type){
         move: moveMat,
         wait: waitMat
     };
+}
+
+function rangeDamage(unitAIdx, unitBIdx){
+    var unitA = dataMat[unitAIdx[0]][unitAIdx[1]][unitAIdx[2]];
+    var unitB = dataMat[unitBIdx[0]][unitBIdx[1]][unitBIdx[2]];
+    var buff = 1 + unitA.buff - unitB.buff;
+    var r = 0.5 + Math.random()/2;
+    var frontLineBuff = 1.0;
+    if(unitAIdx[2] == 1)
+        frontLineBuff = 1.5;
+    return Math.floor(Math.min(unitB.strength, 0.1 * unitA.strength * frontLineBuff * unitA.B * buff * r));
+}
+
+function meleeDamage(unitAIdx, unitBIdx){
+    var unitA = dataMat[unitAIdx[0]][unitAIdx[1]][unitAIdx[2]];
+    var unitB = dataMat[unitBIdx[0]][unitBIdx[1]][unitBIdx[2]];
+    var bA = 1 + unitA.buff - unitB.buff;
+    var bB = 1 + unitB.buff - unitA.buff;
+    var sA = unitA.strength;
+    var sB = unitB.strength;
+
+    var lossList = [];
+
+    for(let i=0;i<5;i++){
+        let rA = 0.5 + Math.random()/2;
+        let rB = 0.5 + Math.random()/2;
+        let lB = Math.min(sB, 0.15 * sA * unitA.W * bA * rA);
+        let lA = Math.min(sA, 0.15 * sB * unitA.W * bA * rA);
+        sA -= lA;
+        sB -= lB;
+        lossList.push([lA,lB]);
+    }
+    return 
 }
 
 function graphics2texture(graphics, config){
@@ -288,6 +326,8 @@ function updateUnitBox(unitIdx){
     spriteMap.buffText.style.fill = [buffColor];
 
     var idx = unitIdx;
+    spriteMap.buttonContainer.visible = battleManager.buttonAvailable;
+
     spriteMap.meleeButton.visible = battleManager.rangeMap.melee[idx[0]][idx[1]][idx[2]];
     spriteMap.rangeButton.visible = battleManager.rangeMap.range[idx[0]][idx[1]][idx[2]];
     spriteMap.waitButton.visible = battleManager.rangeMap.wait[idx[0]][idx[1]][idx[2]];
@@ -502,15 +542,21 @@ function drawFormationMat(){
             formationMat[t].push([]);
             for(var j=0; j<5; j++){
                 var sUnit = new PIXI.Sprite(formationTexture);
+                
                 if(t===0){
-                    sUnit.x = 20 + j*40-5*i;
-                    sUnit.y = 190 + 15*i;
+                    //sUnit.x = 20 + j*40-5*i;
+                    //sUnit.y = 190 + 15*i;
+                    sUnit.x = 0;
+                    sUnit.y = 0;
                 }
                 else{
                     sUnit.scale.x = -1;
-                    sUnit.x = 775 - j*40+5*i;
-                    sUnit.y = 190 + 15*i;
+                    //sUnit.x = 775 - j*40+5*i;
+                    //sUnit.y = 190 + 15*i;
+                    sUnit.x = 0;
+                    sUnit.y = 0;
                 }
+                
                 app.stage.addChild(sUnit);
                 formationMat[t][i].push(sUnit);
             }
@@ -524,18 +570,37 @@ function updateFormatMat(){
     var idx = battleManager.unitSelected;
     if(dataMat[idx[0]][idx[1]][idx[2]] === undefined)
         console.log("invalid select")
-    var texture = PIXI.loader.resources[type2img[dataMat[idx[0]][idx[1]][idx[2]]['type']]].texture;
-    var lossCount = Math.floor((1-dataMat[idx[0]][idx[1]][idx[2]]['strength'] / dataMat[idx[0]][idx[1]][idx[2]]['maxStrength'])*20);
-    
+    //var texture = PIXI.loader.resources[type2img[dataMat[idx[0]][idx[1]][idx[2]]['type']]].texture;
+    //var lossCount = Math.floor((1-dataMat[idx[0]][idx[1]][idx[2]]['strength'] / dataMat[idx[0]][idx[1]][idx[2]]['maxStrength'])*20);
+    var dUnit = dataMat[idx[0]][idx[1]][idx[2]];
+    var lossCount = getLossCount(dUnit.strength, dUnit.maxStrength);
+    var sUnit;
+
     for(var t=0; t<2; t++){
         for(var i=0; i<4; i++){
             for(var j=0; j<5; j++){
+                sUnit = spriteManager.formationMat[t][i][j];
+                sUnit.texture = PIXI.loader.resources[type2img[battleManager.formationType[t]]].texture;
+                // update visible and texture shown
                 if(t !== idx[0]){
-                    spriteManager.formationMat[t][i][j].visible = false; // hide another side
+                    //spriteManager.formationMat[t][i][j].visible = false; // hide another side
+                    sUnit.visible = false;
                 }
                 else{
-                    spriteManager.formationMat[t][i][j].texture = texture;
-                    spriteManager.formationMat[t][i][j].visible = true;
+                    //spriteManager.formationMat[t][i][j].texture = texture;
+                    //spriteManager.formationMat[t][i][j].visible = true;
+                    //sUnit.texture = texture;
+                    sUnit.visible = true;
+                }
+                // update(reset) position. In animation another setting will be applied
+                if(t===0){
+                    sUnit.x = 20 + j*40-5*i;
+                    sUnit.y = 190 + 15*i;
+                }
+                else{
+                    //sUnit.scale.x = -1;
+                    sUnit.x = 775 - j*40+5*i;
+                    sUnit.y = 190 + 15*i;
                 }
             }
         }
@@ -689,13 +754,160 @@ var graphicsDynamicTexture = (function(){
 
 var spriteManager = {}; // this manager will be imported into all sprites
 
+function RangeAnimation(atkIdx, defIdx, loss){
+    this.atkIdx = atkIdx;
+    this.defIdx = defIdx;
+    this.loss = loss;
 
+    this.runLength = 200;
+    this.time = 0.0;
+    this.runTime = 30;
+    this.totalTime = 100;
+}
+RangeAnimation.prototype.playing = function(delta){
+    console.log('playing', this.time, delta, this.totalTime);
+    this.time += delta;
+    if(this.time > this.totalTime){
+        return false;
+    }
 
+    if(this.time < this.runTime){
+
+       this.runningUpdate();
+    }
+    else{
+        this.combatUpdate();
+    }
+    return true;
+}
+RangeAnimation.prototype.runningUpdate = function(){
+    var atkUnit = dataMat[this.atkIdx[0]][this.atkIdx[1]][this.atkIdx[2]];
+    var defUnit = dataMat[this.defIdx[0]][this.defIdx[1]][this.defIdx[2]];
+
+    var atkLossCount = getLossCount(atkUnit.strength, atkUnit.maxStrength);
+    var defLossCount = getLossCount(defUnit.strength, defUnit.maxStrength);
+
+    var sUnit;
+
+    for(var t=0; t<2; t++){
+        for(var i=0; i<4; i++){
+            for(var j=0; j<5; j++){
+                // lossCount will be considered in later code
+                sUnit =spriteManager.formationMat[t][i][j];
+                
+                //spriteManager.formationMat[t][i][j].visible = true;
+                sUnit.visible = true;
+                
+                // update(reset) position. In animation another setting will be applied
+                if(t===this.atkIdx[0]){
+
+                }
+                else{
+                    if(this.defIdx[0] === 0){ // if t is in def side and def side is in left
+                        sUnit.x = 20 + j*40-5*i  + (this.time/this.runTime - 1) * this.runLength;
+                        //sUnit.y = 190 + 15*i - this.runLength;
+                    }
+                    else{
+                        sUnit.x = 775 - j*40+5*i + (1- this.time/this.runTime) * this.runLength;
+                        //sUnit.y = 190 + 15*i;
+                    }
+                }
+            }
+        }
+    }
+    
+    for(var j=0; j<5; j++){
+        for(var i=3; i>=0; i--){
+            if(atkLossCount<=0)
+                break;
+            spriteManager.formationMat[this.atkIdx[0]][i][j].visible = false;
+            atkLossCount--;
+        }
+    }
+
+    for(var j=0; j<5; j++){
+        for(var i=3; i>=0; i--){
+            if(defLossCount<=0)
+                break;
+            spriteManager.formationMat[this.defIdx[0]][i][j].visible = false;
+            defLossCount--;
+        }
+    }
+}
+RangeAnimation.prototype.combatUpdate = function(){
+    var p = (this.time - this.runTime)/(this.totalTime - this.runTime);
+    var fireIdx = p % 0.2 < 0.1 ? 0 : 1;
+
+    // fire!
+    for(let idx of [this.atkIdx, this.defIdx]){
+        let dUnit = dataMat[idx[0]][idx[1]][idx[2]];
+        let t = idx[0];
+        for(let i=0;i<4;i++){
+            let sUnit = spriteManager.formationMat[t][i][4];
+            if(sUnit.visible){
+                sUnit.texture = PIXI.loader.resources[type2frame[dUnit.type][fireIdx]].texture;
+            }
+        }
+    }
+
+    //evade!
+    for(let t=0; t<2; t++){
+        for(let i=0;i<4;i++){
+            for(let j=0;j<5;j++){
+                let sUnit = spriteManager.formationMat[t][i][j];
+                sUnit.y = 190 + 15*i + Math.round(Math.random()*6-3);
+            }
+        }
+    }
+
+    //var atkLossCount = getLossCount(this.atkIdx);
+    var defUnit = dataMat[this.defIdx[0]][this.defIdx[1]][this.defIdx[2]];
+    var defLossCount = getLossCount(Math.ceil(defUnit.strength-this.loss*p) ,defUnit.maxStrength) //+ Math.floor( * p);
+    
+    console.log(defLossCount);
+
+    //Kill!
+    for(var j=0; j<5; j++){
+        for(var i=3; i>=0; i--){
+            if(defLossCount<=0)
+                break;
+            spriteManager.formationMat[this.defIdx[0]][i][j].visible = false;
+            defLossCount--;
+        }
+    }
+
+}
+
+var animationManager = {
+    _playingList: [],
+    playAll:function(delta){
+       var newPlayingList = [];
+       for(let [callback,resolve,reject] of this._playingList){
+            if(callback(delta))
+                newPlayingList.push([callback,resolve,reject]);
+            else
+                resolve();
+       }
+       this._playingList = newPlayingList;
+    },
+    startRangeAnimation: function(atkIdx, defIdx, loss){
+        var a = new RangeAnimation(atkIdx, defIdx, loss);
+        var _resolve, _reject;
+        var promise = new Promise(function(resolve, reject){
+            _resolve = resolve;
+            _reject = reject;
+        });
+        this._playingList.push([a.playing.bind(a), _resolve, _reject]);
+        return promise;
+    }
+};
 
 var battleManager = {
     unitSelected: [0,1,1], // seleced idx i.e. [0,0,0]
     unitPrevSelected:[0,1,1],
     orderSelected:0,
+    formationType:['民兵','民兵'],
+    buttonAvailable:true,
     buttonKeySelected:undefined,
     buttonIdxSeleted:undefined,
     unitOrder:undefined,
@@ -708,6 +920,8 @@ var battleManager = {
         var pidx = this.unitSelected;
         this.unitPrevSelected = pidx;
         this.unitSelected = idx;
+
+        this.formationType[idx[0]] = dataMat[idx[0]][idx[1]][idx[2]].type;
         
     },
     updateAllUnitBox:function(){
@@ -789,8 +1003,27 @@ var battleManager = {
     meleeButton:function(idx){
         console.log(this.unitSelected+'will attack(melee) '+idx);
     },
-    rangeButton:function(idx){
+    rangeButton:async function(idx){
         console.log(this.unitSelected+'will attack(range) '+idx);
+        var iA = this.unitSelected;
+        var iB = idx;
+        //var unitA = dataMat[iA[0]][iA[1]][iA[2]];
+        //var unitB = dataMat[iB[0]][iB[1]][iB[2]];
+        var damage = rangeDamage(iA, iB);
+
+        this.buttonAvailable = false;
+        this.formationType[idx[0]] = dataMat[idx[0]][idx[1]][idx[2]].type;
+        this.updateAll();
+        await animationManager.startRangeAnimation(iA, iB, damage);
+        this.buttonAvailable = true;
+        console.log("animation end");
+
+        dataMat[iB[0]][iB[1]][iB[2]].strength -= damage;
+        if(dataMat[iB[0]][iB[1]][iB[2]].morale >=1)
+            dataMat[iB[0]][iB[1]][iB[2]].morale -=1;
+        
+        this.nextUnit();
+
     },
     moveButton:function(idx){
         console.log(this.unitSelected+'will replace its position with'+idx);
@@ -805,29 +1038,19 @@ var battleManager = {
     }
 }
 
-// load the texture we need
-PIXI.loader
-	.add('interface0', 'images/interface0.PNG')
-    .add('background2', 'images/backgrounds/background-0-2.png')
-	.add('bunny.png', 'images/bunny.png')
-    .add('unit-002-0.png','images/anime/unit-002-0.png')
-    .add('unit-131-0.png','images/anime/unit-131-0.png')
-    .add('unit-000-0.png','images/anime/unit-000-0.png')
-    .add('unit-001-0.png','images/anime/unit-001-0.png')
-    .add('unit-003-0.png','images/anime/unit-003-0.png')
-    .add('flag-3-0.png','images/flags/flag-3-0.png')
-    .add('flag-78-0.png','images/flags/flag-78-0.png')
-    .add('command-0-0.png','images/buttons/command-0-0.png')
-    .add('command-0-1.png','images/buttons/command-0-1.png')
-    .add('command-0-2.png','images/buttons/command-0-2.png')
-    .add('command-0-3.png','images/buttons/command-0-3.png')
-	.load(setup);
+
     
 
 
-function gameloop(delta){
+function gameLoop(delta){
     //console.log(delta);
-    
+    // play animation
+    /*
+    for(let callback of animationManager.playingList){
+        callback();
+    }
+    */
+   animationManager.playAll(delta);
 }
 
 
@@ -988,5 +1211,7 @@ function setup(loader, resources){
     
     //formationManager.reset();
     
-    app.ticker.add(gameloop);
+    app.ticker.add(gameLoop);
 }
+
+// setup will called in later script
