@@ -36,6 +36,12 @@ PIXI.loader
     .add('command-0-2.png','images/buttons/command-0-2.png')
     .add('command-0-3.png','images/buttons/command-0-3.png')
 
+// load unit tags(such as route, broken, etc...)
+PIXI.loader
+    .add('UnitTag-0-0.png','images/unitTags/UnitTag-0-0.png')
+    .add('UnitTag-0-1.png','images/unitTags/UnitTag-0-1.png')
+    .add('UnitTag-0-2.png','images/unitTags/UnitTag-0-2.png')
+
 // start game when all assets are loaded
 PIXI.loader
 	.load(setup);

@@ -21,9 +21,11 @@ function makeRangeType(idx, range){
     // range \in \{ 'none','forward', 'line', 'shock', 'all' \}
     var mat = makeFalseMatrix();
     var setTrue = function(t,i,j){
-        if(dataMat[t][i][j] === undefined)
+        if(dataMat[t][i][j] === undefined || dataMat[t][i][j].strength === 0)
             mat[t][i][j] = false;
-        mat[t][i][j] =  true;
+        else{
+            mat[t][i][j] =  true;
+        }
     }
     switch(range){
         case 'none':
@@ -32,7 +34,13 @@ function makeRangeType(idx, range){
             if(idx[2] == 1){
                 //if(dataMat[1-idx[0]][idx[1]][1])
                 //mat[1-idx[0]][idx[1]][1] = true;
-                setTrue(1-idx[0], idx[1], 1);
+                var opposite = dataMat[1-idx[0]][idx[1]][1];
+                if(opposite === undefined || opposite.strength === 0){
+                    return makeRangeType(idx, 'line');
+                }
+                else{
+                    setTrue(1-idx[0], idx[1], 1);
+                }
             }
             break;
         case 'line':
@@ -68,13 +76,26 @@ function makeRangeType(idx, range){
 }
 
 function makeRange(idx, type){
-    // melee','range','move','wait' -> 2*3*2 mask bool matrix
-    var meleeMat = makeRangeType(idx, type2range[type].melee);
-    var rangeMat = makeRangeType(idx, type2range[type].range);
+    // type here is unit type such as '民兵', which be mapped to range type such as 'line' by type2range
+    // Return action type: melee','range','move','wait' -> 2*3*2 mask bool matrix
+    let dUnit = dataMat[idx[0]][idx[1]][idx[2]];
+
+    if(dUnit.morale >= 1){
+        var meleeMat = makeRangeType(idx, type2range[type].melee);
+        var rangeMat = makeRangeType(idx, type2range[type].range);
+    }
+    else{
+        var meleeMat = makeFalseMatrix();
+        var rangeMat = makeFalseMatrix();
+    }
+        
     var moveMat = makeFalseMatrix();
     moveMat[idx[0]][idx[1]][1-idx[2]] = idx[2] === 1 && dataMat[idx[0]][idx[1]][1-idx[2]] !== undefined;
     var waitMat = makeFalseMatrix();
     waitMat[idx[0]][idx[1]][idx[2]] = true;
+
+    
+
     return {
         melee: meleeMat,
         range: rangeMat,
@@ -91,7 +112,7 @@ function rangeDamage(unitAIdx, unitBIdx){
     var frontLineBuff = 1.0;
     if(unitAIdx[2] == 1)
         frontLineBuff = 1.5;
-    return Math.floor(Math.min(unitB.strength, 0.1 * unitA.strength * frontLineBuff * unitA.B * buff * r));
+    return Math.floor(Math.min(unitB.strength, 0.05 * unitA.strength * frontLineBuff * unitA.B * buff * r));
 }
 
 function meleeDamage(unitAIdx, unitBIdx){
@@ -102,18 +123,18 @@ function meleeDamage(unitAIdx, unitBIdx){
     var sA = unitA.strength;
     var sB = unitB.strength;
 
-    var lossList = [];
+    //var lossList = [];
 
     for(let i=0;i<5;i++){
         let rA = 0.5 + Math.random()/2;
         let rB = 0.5 + Math.random()/2;
-        let lB = Math.min(sB, 0.15 * sA * unitA.W * bA * rA);
-        let lA = Math.min(sA, 0.15 * sB * unitA.W * bA * rA);
+        let lB = Math.min(sB, Math.ceil(0.025 * sA * unitA.W * bA * rA));
+        let lA = Math.min(sA, Math.ceil(0.025 * sB * unitA.W * bA * rA));
         sA -= lA;
         sB -= lB;
-        lossList.push([lA,lB]);
+        //lossList.push([lA,lB]);
     }
-    return 
+    return [unitA.strength - sA, unitB.strength - sB];
 }
 
 function graphics2texture(graphics, config){
@@ -204,6 +225,10 @@ function drawUnitBox(x,y,isAttacker){
 
     var buttonContainer = new PIXI.Container();
     buttonContainer.addChild(meleeButton, rangeButton, waitButton, moveButton);
+
+    var tag = new PIXI.Sprite(PIXI.loader.resources['UnitTag-0-0.png'].texture);
+    tag.anchor.set(0.5);
+    tag.alpha = 0.5;
     
     //unitIcon.anchor.set(0.5);
     unitIcon.x = x -80;
@@ -242,10 +267,14 @@ function drawUnitBox(x,y,isAttacker){
     moveButton.x = x;
     moveButton.y = y;
 
+    tag.x = x;
+    tag.y = y;
+
 
     var topContainer = new PIXI.Container();
 
-    topContainer.addChild(unitIcon, nameText, typeText, moraleText, strengthText, descText, buffText, buttonContainer);
+    topContainer.addChild(unitIcon, nameText, typeText, moraleText, strengthText, descText, buffText, 
+        buttonContainer, tag);
     //console.log(topContainer.children);
     
     
@@ -263,13 +292,10 @@ function drawUnitBox(x,y,isAttacker){
         rangeButton: rangeButton,
         waitButton: waitButton,
         moveButton: moveButton,
-        buttonContainer: buttonContainer
+        buttonContainer: buttonContainer,
+        tag: tag
     }
-    /* 
-    Object.keys(spriteMap).forEach(function(key){
-        app.stage.addChild(spriteMap[key]);
-    });
-    */
+
     
     app.stage.addChild(spriteMap.battleSideBox);
     app.stage.addChild(topContainer);
@@ -355,6 +381,9 @@ function updateUnitBox(unitIdx){
         })
     }
 
+    //if(unitData.strength>0){
+    spriteMap.tag.visible = unitData.strength === 0;
+    //}
 
 }
 
@@ -580,7 +609,8 @@ function updateFormatMat(){
         for(var i=0; i<4; i++){
             for(var j=0; j<5; j++){
                 sUnit = spriteManager.formationMat[t][i][j];
-                sUnit.texture = PIXI.loader.resources[type2img[battleManager.formationType[t]]].texture;
+                //sUnit.texture = PIXI.loader.resources[type2img[battleManager.formationType[t]]].texture;
+                sUnit.texture = PIXI.loader.resources[type2img[dUnit.type]].texture;
                 // update visible and texture shown
                 if(t !== idx[0]){
                     //spriteManager.formationMat[t][i][j].visible = false; // hide another side
@@ -754,17 +784,35 @@ var graphicsDynamicTexture = (function(){
 
 var spriteManager = {}; // this manager will be imported into all sprites
 
-function RangeAnimation(atkIdx, defIdx, loss){
+function CombatAnimation(atkIdx, defIdx, atkLoss, defLoss){
     this.atkIdx = atkIdx;
     this.defIdx = defIdx;
-    this.loss = loss;
+    this.atkLoss = atkLoss;
+    this.defLoss = defLoss;
 
     this.runLength = 200;
     this.time = 0.0;
-    this.runTime = 30;
+    this.runTime = 30; // if runTime > totalTime, combat(range, melee) animation will not be played
     this.totalTime = 100;
+
+    this.runMark = 0.5; // control unit run range  ---->origin---->(0.5)  ------>origin(1) origin------>(0)
+
 }
-RangeAnimation.prototype.playing = function(delta){
+CombatAnimation.prototype.preprocess = function(){
+    // set all units visible and reset their texture 
+    for(let idx of [this.atkIdx, this.defIdx]){
+        let t = idx[0];
+        for(let i=0; i<4; i++){
+            for(let j=0; j<5; j++){
+                let sUnit = spriteManager.formationMat[t][i][j];
+                let dUnit = dataMat[idx[0]][idx[1]][idx[2]];
+                sUnit.visible = true;
+                sUnit.texture = PIXI.loader.resources[type2frame[dUnit.type][0]].texture;
+            }
+        }
+    }
+}
+CombatAnimation.prototype.playing = function(delta){
     console.log('playing', this.time, delta, this.totalTime);
     this.time += delta;
     if(this.time > this.totalTime){
@@ -772,7 +820,6 @@ RangeAnimation.prototype.playing = function(delta){
     }
 
     if(this.time < this.runTime){
-
        this.runningUpdate();
     }
     else{
@@ -780,77 +827,36 @@ RangeAnimation.prototype.playing = function(delta){
     }
     return true;
 }
-RangeAnimation.prototype.runningUpdate = function(){
-    var atkUnit = dataMat[this.atkIdx[0]][this.atkIdx[1]][this.atkIdx[2]];
-    var defUnit = dataMat[this.defIdx[0]][this.defIdx[1]][this.defIdx[2]];
-
-    var atkLossCount = getLossCount(atkUnit.strength, atkUnit.maxStrength);
-    var defLossCount = getLossCount(defUnit.strength, defUnit.maxStrength);
-
-    var sUnit;
-
-    for(var t=0; t<2; t++){
-        for(var i=0; i<4; i++){
-            for(var j=0; j<5; j++){
-                // lossCount will be considered in later code
-                sUnit =spriteManager.formationMat[t][i][j];
-                
-                //spriteManager.formationMat[t][i][j].visible = true;
-                sUnit.visible = true;
-                
-                // update(reset) position. In animation another setting will be applied
-                if(t===this.atkIdx[0]){
-
-                }
-                else{
-                    if(this.defIdx[0] === 0){ // if t is in def side and def side is in left
-                        sUnit.x = 20 + j*40-5*i  + (this.time/this.runTime - 1) * this.runLength;
-                        //sUnit.y = 190 + 15*i - this.runLength;
-                    }
-                    else{
-                        sUnit.x = 775 - j*40+5*i + (1- this.time/this.runTime) * this.runLength;
-                        //sUnit.y = 190 + 15*i;
-                    }
-                }
-            }
-        }
-    }
-    
-    for(var j=0; j<5; j++){
-        for(var i=3; i>=0; i--){
-            if(atkLossCount<=0)
-                break;
-            spriteManager.formationMat[this.atkIdx[0]][i][j].visible = false;
-            atkLossCount--;
-        }
-    }
-
-    for(var j=0; j<5; j++){
-        for(var i=3; i>=0; i--){
-            if(defLossCount<=0)
-                break;
-            spriteManager.formationMat[this.defIdx[0]][i][j].visible = false;
-            defLossCount--;
-        }
-    }
+CombatAnimation.prototype.runningUpdate = function(){
+    this.runningUpdatePart(this.atkIdx);
+    this.runningUpdatePart(this.defIdx);
 }
-RangeAnimation.prototype.combatUpdate = function(){
-    var p = (this.time - this.runTime)/(this.totalTime - this.runTime);
-    var fireIdx = p % 0.2 < 0.1 ? 0 : 1;
-
-    // fire!
-    for(let idx of [this.atkIdx, this.defIdx]){
-        let dUnit = dataMat[idx[0]][idx[1]][idx[2]];
-        let t = idx[0];
-        for(let i=0;i<4;i++){
-            let sUnit = spriteManager.formationMat[t][i][4];
-            if(sUnit.visible){
-                sUnit.texture = PIXI.loader.resources[type2frame[dUnit.type][fireIdx]].texture;
-            }
-        }
+CombatAnimation.prototype.runningUpdatePart = function(idx){
+    var p = this.time/this.runTime;
+    var t = idx[0]; // formationMat and dataMat share same idx[0] but not idx[1],idx[2]
+    var unit = dataMat[idx[0]][idx[1]][idx[2]];
+    var sUnit;
+    for(let i=0; i<4; i++){
+        for(let j=0; j<5; j++){
+            sUnit = spriteManager.formationMat[t][i][j];
+            // lossCount will be considered in later code
+            //sUnit.visible = true; // this is done by added proprocess method
+            if(t === 0)
+                sUnit.x = 20 + j*40-5*i + this.runningDelta(p, [t,i,j]);
+            else
+                sUnit.x = 775 - j*40+5*i - this.runningDelta(p, [t,i,j]);        }
     }
 
-    //evade!
+    var lossCount = getLossCount(unit.strength, unit.maxStrength);
+    this.diedUpdatePart(p, idx, lossCount);
+}
+CombatAnimation.prototype.runningDelta = function(p, idx){
+    let d = (p - this.runMark) * this.runLength;
+    if(idx[0] === this.atkIdx[0])
+        d = Math.max(0, d);
+    return d;
+}
+CombatAnimation.prototype.evadeUpdate = function(p){
     for(let t=0; t<2; t++){
         for(let i=0;i<4;i++){
             for(let j=0;j<5;j++){
@@ -859,24 +865,135 @@ RangeAnimation.prototype.combatUpdate = function(){
             }
         }
     }
-
-    //var atkLossCount = getLossCount(this.atkIdx);
-    var defUnit = dataMat[this.defIdx[0]][this.defIdx[1]][this.defIdx[2]];
-    var defLossCount = getLossCount(Math.ceil(defUnit.strength-this.loss*p) ,defUnit.maxStrength) //+ Math.floor( * p);
+}
+CombatAnimation.prototype.diedUpdatePart = function(p, idx, lossCount){
     
-    console.log(defLossCount);
-
-    //Kill!
+    var t = idx[0];
+    if(lossCount === undefined){
+        var unit = dataMat[idx[0]][idx[1]][idx[2]];
+        var loss = t === this.atkIdx[0] ? this.atkLoss : this.defLoss;
+        lossCount = getLossCount(Math.ceil(unit.strength - loss*p), unit.maxStrength)
+    }
+    
     for(var j=0; j<5; j++){
         for(var i=3; i>=0; i--){
-            if(defLossCount<=0)
+            if(lossCount<=0)
                 break;
-            spriteManager.formationMat[this.defIdx[0]][i][j].visible = false;
-            defLossCount--;
+            spriteManager.formationMat[t][i][j].visible = false;
+            lossCount--;
         }
     }
 
 }
+CombatAnimation.prototype.diedUpdate = function(p, atkLossCount, defLossCount){
+    this.diedUpdatePart(p, this.atkIdx, atkLossCount);
+    this.diedUpdatePart(p, this.defIdx, defLossCount);
+}
+CombatAnimation.prototype.p2frame = function(p){
+    return p % 0.2 < 0.1 ? 0 : 1;
+}
+CombatAnimation.prototype.frontUpdate = function(p){
+    //var fireIdx = p % 0.2 < 0.1 ? 0 : 1;
+    var frameIdx = this.p2frame(p);
+
+    // fire!
+    for(let idx of [this.atkIdx, this.defIdx]){
+        let dUnit = dataMat[idx[0]][idx[1]][idx[2]];
+        let t = idx[0];
+        for(let i=0;i<4;i++){
+            let sUnit = spriteManager.formationMat[t][i][4];
+            if(sUnit.visible){
+                sUnit.texture = PIXI.loader.resources[type2frame[dUnit.type][frameIdx]].texture;
+            }
+        }
+    }
+}
+CombatAnimation.prototype.combatUpdate = function(){
+    var p = (this.time - this.runTime)/(this.totalTime - this.runTime);
+
+    // front fight!
+    this.frontUpdate(p)
+
+    // evade!
+    this.evadeUpdate(p);
+
+    // died!
+    this.diedUpdate(p);
+
+}
+
+function RangeAnimation(atkIdx, defIdx, loss){
+    CombatAnimation.call(this, atkIdx, defIdx, 0, loss);
+
+    this.runLength = 200;
+    this.time = 0.0;
+    this.runTime = 30;
+    this.totalTime = 100;
+
+    this.runMark = 1.0; // control unit run range  ---->origin---->(0.5)  ------>origin(1) origin------>(0)
+
+}
+RangeAnimation.prototype = Object.create(CombatAnimation.prototype);
+RangeAnimation.prototype.p2frame = function(p){
+    return p % 0.2 < 0.1 ? 0 : 1;
+}
+
+function MeleeAnimation(atkIdx, defIdx, atkLoss, defLoss){
+    CombatAnimation.call(this, atkIdx, defIdx, atkLoss, defLoss);
+
+    this.runLength = 250;
+    this.time = 0.0;
+    this.runTime = 30;
+    this.totalTime = 100;
+
+    this.runMark = 0.3; // control unit run range  ---->origin---->(0.5)  ------>origin(1) origin------>(0)
+
+}
+MeleeAnimation.prototype = Object.create(CombatAnimation.prototype);
+MeleeAnimation.prototype.p2frame = function(p){
+    return p % 0.2 < 0.1 ? 2 : 3;
+}
+
+function BackAnimation(idx){
+    CombatAnimation.call(this, undefined, undefined, undefined, undefined);
+    this.idx = idx;
+
+    this.runLength = 200;
+    this.time = 0.0;
+    this.runTime = 40;
+    this.totalTime = 40;
+
+    this.runMark = 0.0; // control unit run range  ---->origin---->(0.5)  ------>origin(1) origin------>(0)
+}
+BackAnimation.prototype = Object.create(CombatAnimation.prototype);
+BackAnimation.prototype.preprocess = function(){
+    // set all units visible and reset their texture 
+    var dUnit = dataMat[this.idx[0]][this.idx[1]][this.idx[2]];
+    for(let t=0; t<2; t++){
+        for(let i=0; i<4; i++){
+            for(let j=0; j<5; j++){
+                let sUnit = spriteManager.formationMat[t][i][j];
+                //sUnit.visible = this.idx[0] === t;
+                if(t === this.idx[0]){
+                    sUnit.texture = PIXI.loader.resources[type2frame[dUnit.type][0]].texture;
+                    sUnit.visible = true;
+                }
+                else{
+                    sUnit.visible = false;
+                }
+            }
+        }
+    }
+}
+BackAnimation.prototype.runningUpdate = function(){
+    this.runningUpdatePart(this.idx);
+    //this.runningUpdatePart(this.defIdx);
+}
+BackAnimation.prototype.runningDelta = function(p, idx){
+    let d = -(p - this.runMark) * this.runLength;
+    return d;
+}
+
 
 var animationManager = {
     _playingList: [],
@@ -890,15 +1007,27 @@ var animationManager = {
        }
        this._playingList = newPlayingList;
     },
-    startRangeAnimation: function(atkIdx, defIdx, loss){
-        var a = new RangeAnimation(atkIdx, defIdx, loss);
+    setupAnimation: function(a){
         var _resolve, _reject;
         var promise = new Promise(function(resolve, reject){
             _resolve = resolve;
             _reject = reject;
         });
         this._playingList.push([a.playing.bind(a), _resolve, _reject]);
+        a.preprocess();
         return promise;
+    },
+    startRangeAnimation: function(atkIdx, defIdx, loss){
+        var a = new RangeAnimation(atkIdx, defIdx, loss);
+        return this.setupAnimation(a);
+    },
+    startMeleeAnimation: function(atkIdx, defIdx, lossA, lossB){
+        var a = new MeleeAnimation(atkIdx, defIdx, lossA, lossB);
+        return this.setupAnimation(a);
+    },
+    startBackAnimation: function(idx){
+        var a = new BackAnimation(idx);
+        return this.setupAnimation(a);
     }
 };
 
@@ -906,7 +1035,7 @@ var battleManager = {
     unitSelected: [0,1,1], // seleced idx i.e. [0,0,0]
     unitPrevSelected:[0,1,1],
     orderSelected:0,
-    formationType:['民兵','民兵'],
+    //formationType:['民兵','民兵'],
     buttonAvailable:true,
     buttonKeySelected:undefined,
     buttonIdxSeleted:undefined,
@@ -921,7 +1050,7 @@ var battleManager = {
         this.unitPrevSelected = pidx;
         this.unitSelected = idx;
 
-        this.formationType[idx[0]] = dataMat[idx[0]][idx[1]][idx[2]].type;
+        //this.formationType[idx[0]] = dataMat[idx[0]][idx[1]][idx[2]].type;
         
     },
     updateAllUnitBox:function(){
@@ -947,17 +1076,63 @@ var battleManager = {
         updateFormatMat();
         this.updateAllBattleCenterVector();
         this.updateAllUnitBox();
+        this.updateInfo();
         updateFactionGraph(this.atkInfo, this.defInfo, this.battleInfo);
     },
-    battleInit:function(){
-        //
+    updateInfo:function(){
+        //this.atkInfo['strength'] = 0;
+        //this.defInfo['strength'] = 0;
+        var strengths = [0,0];
+        for(let t=0; t<2; t++){
+            for(let i=0; i<3; i++){
+                for(let j=0; j<2; j++){
+                    let dUnit = dataMat[t][i][j]
+                    if(dUnit !== undefined){
+                        strengths[t] += dUnit.strength *(dUnit.I + dUnit.W + dUnit.B) * (1+dUnit.buff);
+                    }
+                }
+            }
+        }
+        this.atkInfo['strength'] = strengths[0];
+        this.defInfo['strength'] = strengths[1];
     },
-    newRound:function(){
+    swap: function(idx){
+        var cidx = [idx[0], idx[1], 1-idx[2]];
+        //var cidx = this.unitSelected;
+        var dUnit = dataMat[idx[0]][idx[1]][idx[2]];
+        var cdUnit = dataMat[cidx[0]][cidx[1]][cidx[2]];
+        dataMat[idx[0]][idx[1]][idx[2]] = cdUnit;
+        dataMat[cidx[0]][cidx[1]][cidx[2]] = dUnit;
+
+        for(let i=0; i<12; i++){
+            if(arrayEqual(this.unitOrder[i], cidx)){
+                this.unitOrder[i] = idx;
+            }
+            else if(arrayEqual(this.unitOrder[i], idx)){
+                this.unitOrder[i] = cidx;
+            }
+        }
+    },
+    substituteSwap: function(iB){
+        if( iB[2] === 1 && // in frontline
+            dataMat[iB[0]][iB[1]][iB[2]].strength === 0 && // broken
+            (dataMat[iB[0]][iB[1]][1-iB[2]] != undefined && dataMat[iB[0]][iB[1]][1-iB[2]].strength>0)){ // exist valid substitude
+            this.swap(iB);
+        }
+    },
+    battleInit:function(){
+        /*
         this.orderSelected = 0;
         this.select(this.unitOrder[0]);
         this.battleInfo.turn+=1;
 
         this.updateAll();
+        */
+       this.orderSelected = -1;
+       this.findNextUnit();
+    },
+    newRound:function(){
+        // this should do rount init logic
     },
     nextUnit:function(){
         //this.battleInfo.turn += 1;
@@ -968,13 +1143,35 @@ var battleManager = {
         var idx = this.unitOrder[this.orderSelected+1]
         if(dataMat[idx[0]][idx[1]][idx[2]] === undefined){
             this.newRound();
-            return;
+
+            this.orderSelected = 0;
+            this.select(this.unitOrder[0]);
+            this.battleInfo.turn+=1;
+            //return;
         }
-        this.orderSelected += 1;
-        this.select(idx);
-        this.battleInfo.turn += 1;
+        else{
+            this.orderSelected += 1;
+            this.select(idx);
+            this.battleInfo.turn += 1;
+        }
         
         this.updateAll();
+    },
+    findNextUnit: async function(){
+        // find next unit who can be assigned with non-verbose command
+        while(true){
+            this.nextUnit();
+            let idx = this.unitSelected;
+            let dUnit = dataMat[idx[0]][idx[1]][idx[2]];
+            if(dUnit.strength === 0)
+                continue;
+            //if(isAllFalse([this.rangeMap.melee, this.rangeMap.range, this.rangeMap.move])){
+                if(isAllFalse([this.rangeMap.melee, this.rangeMap.range])){
+                await this._waitButton(idx);
+                continue;
+            }
+            return;
+        }
     },
     onButtonDown: function(key, idx){
         console.log('onButtonDown',key,idx);
@@ -1000,10 +1197,31 @@ var battleManager = {
         this.buttonIdxSelected = undefined;
         this.updateAllUnitBox();
     },
-    meleeButton:function(idx){
+    meleeButton: async function(idx){
         console.log(this.unitSelected+'will attack(melee) '+idx);
+        var iA = this.unitSelected;
+        var iB = idx;
+        var aLoss,bLoss;
+        [aLoss,bLoss] = meleeDamage(iA, iB);
+
+        this.buttonAvailable = false;
+        //this.formationType[idx[0]] = dataMat[idx[0]][idx[1]][idx[2]].type;
+        this.updateAll();
+        await animationManager.startMeleeAnimation(iA, iB, aLoss, bLoss);
+        this.buttonAvailable = true;
+        console.log("animation end");
+
+        dataMat[iB[0]][iB[1]][iB[2]].strength -= bLoss;
+        dataMat[iA[0]][iA[1]][iA[2]].strength -= aLoss;
+        if(dataMat[iA[0]][iA[1]][iA[2]].morale >=1)
+            dataMat[iA[0]][iA[1]][iA[2]].morale -=1;
+        this.substituteSwap(iA);
+        this.substituteSwap(iB);
+        
+        this.findNextUnit();
+
     },
-    rangeButton:async function(idx){
+    rangeButton: async function(idx){
         console.log(this.unitSelected+'will attack(range) '+idx);
         var iA = this.unitSelected;
         var iB = idx;
@@ -1012,34 +1230,85 @@ var battleManager = {
         var damage = rangeDamage(iA, iB);
 
         this.buttonAvailable = false;
-        this.formationType[idx[0]] = dataMat[idx[0]][idx[1]][idx[2]].type;
+        //this.formationType[idx[0]] = dataMat[idx[0]][idx[1]][idx[2]].type;
         this.updateAll();
         await animationManager.startRangeAnimation(iA, iB, damage);
         this.buttonAvailable = true;
         console.log("animation end");
 
         dataMat[iB[0]][iB[1]][iB[2]].strength -= damage;
-        if(dataMat[iB[0]][iB[1]][iB[2]].morale >=1)
-            dataMat[iB[0]][iB[1]][iB[2]].morale -=1;
+        if(dataMat[iA[0]][iA[1]][iA[2]].morale >=1)
+            dataMat[iA[0]][iA[1]][iA[2]].morale -=1;
+        this.substituteSwap(iB);
+
         
-        this.nextUnit();
+        this.findNextUnit();
 
     },
-    moveButton:function(idx){
+    moveButton: async function(idx){
         console.log(this.unitSelected+'will replace its position with'+idx);
+
+        this.buttonAvailable = false;
+        this.updateAll();
+        //await animationManager.startBackAnimation(idx);
+        await animationManager.startBackAnimation(this.unitSelected);
+        this.buttonAvailable = true;
+        console.log("animation end");
+
+        this.swap(this.unitSelected);
+
+        /*
+        //var cidx = [idx[0], idx[1], 1-idx[2]];
+        var cidx = this.unitSelected;
+        var dUnit = dataMat[idx[0]][idx[1]][idx[2]];
+        var cdUnit = dataMat[cidx[0]][cidx[1]][cidx[2]];
+        dataMat[idx[0]][idx[1]][idx[2]] = cdUnit;
+        dataMat[cidx[0]][cidx[1]][cidx[2]] = dUnit;
+
+        for(let i=0; i<12; i++){
+            if(arrayEqual(this.unitOrder[i], cidx)){
+                this.unitOrder[i] = idx;
+            }
+            else if(arrayEqual(this.unitOrder[i], idx)){
+                this.unitOrder[i] = cidx;
+            }
+        }
+        */
+
+        this.findNextUnit();
+
     },
-    waitButton:function(idx){
+    waitButton: async function(idx){
         console.log(this.unitSelected+'will zzz');
         var unitData = dataMat[idx[0]][idx[1]][idx[2]];
+
+        this.buttonAvailable = false;
+        this.updateAll();
+        await animationManager.startBackAnimation(idx);
+        this.buttonAvailable = true;
+        console.log("animation end");
+
         if(unitData.morale < unitData.maxMorale){
             unitData.morale += 1;
         }
-        this.nextUnit();
+        this.findNextUnit();
+    },
+    _waitButton: async function(idx){
+        console.log(this.unitSelected+'will zzz');
+        var unitData = dataMat[idx[0]][idx[1]][idx[2]];
+
+        this.buttonAvailable = false;
+        this.updateAll();
+        await animationManager.startBackAnimation(idx);
+        this.buttonAvailable = true;
+        console.log("animation end");
+
+        if(unitData.morale < unitData.maxMorale){
+            unitData.morale += 1;
+        }
     }
 }
 
-
-    
 
 
 function gameLoop(delta){
@@ -1206,7 +1475,8 @@ function setup(loader, resources){
     }
     
     
-    battleManager.newRound();
+    //battleManager.newRound();
+    battleManager.battleInit();
     
     
     //formationManager.reset();

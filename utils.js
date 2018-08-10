@@ -18,3 +18,14 @@ function arrayEqual(a,b){
     }
     return true;
 }
+
+function isAllFalse(arr){
+    if(Array.isArray(arr)){
+        for(let el of arr){
+            if(!isAllFalse(el))
+                return false;
+        }
+        return true;
+    }
+    return arr === false;
+}
