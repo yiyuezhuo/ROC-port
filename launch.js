@@ -16,10 +16,10 @@ PIXI.loader
     .add('unit-001-0.png','images/anime/unit-001-0.png')
     .add('unit-003-0.png','images/anime/unit-003-0.png')
 */
-for(let type in type2frame){
-    for(let i=0;i<4;i++){
-        let name = type2frame[type][i];
-        let url = 'images/anime/' + name;
+for(var type in type2frame){
+    for(var i=0;i<4;i++){
+        var name = type2frame[type][i];
+        var url = 'images/anime/' + name;
         PIXI.loader.add(name, url);
     }
 }

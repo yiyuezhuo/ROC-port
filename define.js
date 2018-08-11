@@ -14,12 +14,12 @@ var type2img = {
     '炮兵':'unit-003-0.png'
 }
 */
-type2img = {};
-type2frame = {};
-for(let type in _type2img){
+var type2img = {};
+var type2frame = {};
+for(var type in _type2img){
     type2img[type] = 'unit-'+_type2img[type]+'-0.png'; 
     type2frame[type] = [];
-    for(let i=0;i<4;i++){
+    for(var i=0;i<4;i++){
         type2frame[type].push('unit-'+_type2img[type]+'-'+i+'.png'); 
     }
 }

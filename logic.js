@@ -138,6 +138,7 @@ function meleeDamage(unitAIdx, unitBIdx){
 }
 
 function graphics2texture(graphics, config){
+    /*
     if(config && config.transparent){
         var renderer = PIXI.autoDetectRenderer(graphics.width, graphics.height, {transparent: true});
         //console.log('transparent')
@@ -150,6 +151,10 @@ function graphics2texture(graphics, config){
     renderer.render(stage);
     var texture = PIXI.Texture.fromCanvas(renderer.view);
     return texture;
+    */
+   var texture = PIXI.RenderTexture.create(graphics.width, graphics.height, config);
+   app.renderer.render(graphics, texture);
+   return texture;
 }
 
 function drawUnitBox(x,y,isAttacker){
@@ -753,11 +758,15 @@ var graphicsDynamicTexture = (function(){
         var sideBarHeight = 30;
         
         var graphics = new PIXI.Graphics();
+        /*
         var renderer = PIXI.autoDetectRenderer(sideBarWidth, sideBarHeight);
         var stage = new PIXI.Container();
         stage.addChild(graphics);
         //renderer.render(stage);
         var texture = PIXI.Texture.fromCanvas(renderer.view);
+        */
+       var texture = PIXI.RenderTexture.create(sideBarWidth, sideBarHeight);
+       app.renderer.render(graphics, texture);
         
         
         function update(p){
@@ -771,8 +780,9 @@ var graphicsDynamicTexture = (function(){
             graphics.beginFill(0xFF0000, 1);
             graphics.drawRect(sideBarWidth*p, 0, sideBarWidth-2, sideBarHeight);
             // rerender and update to texture
-            renderer.render(stage);
-            texture.update();
+            //renderer.render(stage);
+            //texture.update();
+            app.renderer.render(graphics, texture);   
         }
         
         return {texture: texture,
