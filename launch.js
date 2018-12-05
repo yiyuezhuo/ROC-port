@@ -1,3 +1,14 @@
+// start service-worker.js to try to cache some file.
+if ('serviceWorker' in navigator) {
+
+    // register service worker
+    navigator.serviceWorker.register('/service-worker.js').then(function(registration) {
+        console.log('Registered events at scope: ', registration.scope);
+      });;
+  
+}
+
+
 // load the texture we need
 // setup is provided by logic.js
 
